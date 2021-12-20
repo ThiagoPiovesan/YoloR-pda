@@ -198,6 +198,7 @@ def detect(save_img = False):
 
 #==================================================================================================#
 # Função Principal:
+# python mainProgram.py --source 0 --weights ../weights/yolor_p6.pt --device 0
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
