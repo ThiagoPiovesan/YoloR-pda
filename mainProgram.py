@@ -175,8 +175,11 @@ def detect(save_img = False, send_control = True):
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]          # normalization gain whwh
 #--------------------------------------------------------------------------------------------------#
             if det is not None and len(det):
-                ac = []
-                na = []
+#--------------------------------------------------------------------------------------------------#
+            # Definição de variáveis auxiliares:         
+                ac_array = []
+                na_array = []
+#--------------------------------------------------------------------------------------------------#        
                 # Rescale boxes from img_size to im0 size
                 det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
 #--------------------------------------------------------------------------------------------------#
@@ -188,7 +191,7 @@ def detect(save_img = False, send_control = True):
                 # Write results
                 for *xyxy, conf, cls in det:
                 # Prints to debug:
-                    print('#-----------------------------------------------------------------#\n')
+                    print('#-------------------------------------------------------------------------------#\n')
 #                    print('Conf: ', conf)
                     print(det)                 
 #--------------------------------------------------------------------------------------------------#
@@ -202,36 +205,34 @@ def detect(save_img = False, send_control = True):
 
                         plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=3)
 
-                    ac.append(float('%.2f' % conf) * 100)
-                    na.append(names[int(cls)])
+                    ac_array.append(float('%.2f' % conf) * 100)
+                    na_array.append(names[int(cls)])
 #==================================================================================================#
             # Sending message to bot:       #TODO: Acrescentar para onça também...
                 acc = float('%.2f' % conf) * 100 
                 frame = im0.copy()
+                
                 # If class_name = person and accuracy >= 80 %
-                print('ac: ', ac)
-                print('na: ', na)
                 if (names[int(cls)] == class_name) and (int(acc) >= accuracy):
                     
                     if send_control:
+                    # Prints to debug
                         print('\n#------------------------------------------#')
-                        print("Classe:", names[int(cls)], "| Accuracy: %.2f" % conf, "%")
+                        print("Classes: ", na_array, "| Accuracy: ", ac_array, "%")
                         print('#------------------------------------------#\n')
-                        
+#--------------------------------------------------------------------------------------------------#                    
+                    # Save image to computer
                         cv2.imwrite('teste.png', frame)         # TODO: Encontrar um jeito de mandar o frame
                         photo = open('teste.png', 'rb')
-                        
-                        send_control = False
+#--------------------------------------------------------------------------------------------------#
+                        # TODO: Mudar para utilizar o object tracking                      
+                        send_control = False                    # Evita de ficar spamando o bot
 
                         #bot_admin.send_alert(detection = names[int(cls)], accuracy = acc, img = photo)
-                        bot_admin.send_alert(detection = na, accuracy = ac, img = photo)
-                        
+                        bot_admin.send_alert(detection = na_array, accuracy = ac_array, img = photo)
+#--------------------------------------------------------------------------------------------------#                     
                     else:
                         pass
-#                    else:
-#                        send_control = False
-#                    print('Label: ', label)
-#                    print('String: ', s)
 #--------------------------------------------------------------------------------------------------#
             # Print time (inference + NMS)
             print('%sDone. (%.3fs)' % (s, t2 - t1))
@@ -241,10 +242,10 @@ def detect(save_img = False, send_control = True):
                 currTime = time.time()
                 fps = 1 / (currTime - prevTime)
                 prevTime = currTime
-                
+#--------------------------------------------------------------------------------------------------#               
                 cv2.putText(im0, f'FPS: {int(fps)}', (20, 70), cv2.FONT_HERSHEY_PLAIN, 3, (0, 196, 255), 2)
                 cv2.imshow(p, im0)
-                
+#--------------------------------------------------------------------------------------------------#                
                 if cv2.waitKey(30) == 27:                       # q to quit
                     raise StopIteration
 #--------------------------------------------------------------------------------------------------#
