@@ -40,6 +40,34 @@ from models.models import *
 from utils.datasets import *
 from utils.general import *
 #--------------------------------------------------------------------------------------------------#
+# Bot import
+
+from dotenv import load_dotenv
+from threading import Thread
+import os
+
+import sys
+sys.path.append("..")
+from bot_jaguar import AdminBot                                         # bot importation
+
+#==================================================================================================#
+# Instanciando classe Bot Admin
+
+load_dotenv()                                                           # Carregando as chaves | Loading keys
+token_admin = os.getenv('ADMIN_TOKEN')                                  # Token do admin       | Admin token
+admin_id = os.getenv('ADMIN_ID')                                        # Id do admin          | Admin ID
+
+bot_admin = AdminBot.AdminBot(token_admin, admin_id)                    # Instancia do bot do admin
+#bot_admin.send_alert(detection='pessoa', accuracy='92%', img=None)
+#==================================================================================================#
+# Control Variables 
+#TODO: Acrescentar onça e Object tracking...
+
+send_control: bool = True                                               # Substituir por Object tracking
+class_name: str = "person"                                              # Acrescentar onça depois
+accuracy: int = 80                                                      # Acurácia mínima    
+
+#==================================================================================================#
 # Função para declaração das classes: 
 
 def load_classes(path):
@@ -51,7 +79,7 @@ def load_classes(path):
 #--------------------------------------------------------------------------------------------------#
 # Função principal para detecção dos objetos desejados:
 
-def detect(save_img = False):
+def detect(save_img = False, send_control = True):
     prevTime = 0
     out, source, weights, view_img, save_txt, imgsz, cfg, names = \
         opt.output, opt.source, opt.weights, opt.view_img, opt.save_txt, opt.img_size, opt.cfg, opt.names
@@ -80,7 +108,7 @@ def detect(save_img = False):
         model.half()                                            # to FP16
 #--------------------------------------------------------------------------------------------------#
     # Second-stage classifier
-    classify = False
+    classify = False                                            # It is optional...
 
     if classify:
         modelc = load_classifier(name='resnet101', n=2)         # initialize
@@ -90,23 +118,24 @@ def detect(save_img = False):
     # Set Dataloader
     vid_path, vid_writer = None, None
 
-    if webcam:
+    if webcam:                                                  # If it is using an webcam
         view_img = True
-        cudnn.benchmark = True  # set True to speed up constant image size inference
-        dataset = LoadStreams(source, img_size=imgsz)
+        cudnn.benchmark = True                                  # set True to speed up constant image size inference
+        dataset = LoadStreams(source, img_size=imgsz)           
 
     else:
         save_img = True
-        dataset = LoadImages(source, img_size=imgsz, auto_size=64)
+        dataset = LoadImages(source, img_size=imgsz, auto_size=64)  # Dataset load
 #--------------------------------------------------------------------------------------------------#
     # Get names and colors
-    names = load_classes(names)
+    names = load_classes(names)                                 # class names load
     colors = [[random.randint(0, 255) for _ in range(3)] for _ in range(len(names))]
 #--------------------------------------------------------------------------------------------------#
     # Run inference
     t0 = time.time()
     img = torch.zeros((1, 3, imgsz, imgsz), device=device)      # init img
     _ = model(img.half() if half else img) if device.type != 'cpu' else None  # run once
+
     for path, img, im0s, vid_cap in dataset:
         img = torch.from_numpy(img).to(device)
         img = img.half() if half else img.float()               # uint8 to fp16/32
@@ -128,10 +157,17 @@ def detect(save_img = False):
 #--------------------------------------------------------------------------------------------------#
         # Process detections
         for i, det in enumerate(pred):                          # detections per image
-            if webcam:                                          # batch_size >= 1
+            
+            if webcam:                                          # batch_size >= 1 
                 p, s, im0 = path[i], '%g: ' % i, im0s[i].copy()
             else:
                 p, s, im0 = path, '', im0s
+
+#--------------------------------------------------------------------------------------------------#
+        # Copia um instancia da imagem coletada: 
+        # Take one snap of the image collected:
+            frame = im0.copy()
+#--------------------------------------------------------------------------------------------------#    
 
             save_path = str(Path(out) / Path(p).name)
             txt_path = str(Path(out) / Path(p).stem) + ('_%g' % dataset.frame if dataset.mode == 'video' else '')
@@ -139,6 +175,8 @@ def detect(save_img = False):
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]          # normalization gain whwh
 #--------------------------------------------------------------------------------------------------#
             if det is not None and len(det):
+                ac = []
+                na = []
                 # Rescale boxes from img_size to im0 size
                 det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
 #--------------------------------------------------------------------------------------------------#
@@ -149,6 +187,11 @@ def detect(save_img = False):
 #--------------------------------------------------------------------------------------------------#
                 # Write results
                 for *xyxy, conf, cls in det:
+                # Prints to debug:
+                    print('#-----------------------------------------------------------------#\n')
+#                    print('Conf: ', conf)
+                    print(det)                 
+#--------------------------------------------------------------------------------------------------#
                     if save_txt:  # Write to file
                         xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
                         with open(txt_path + '.txt', 'a') as f:
@@ -156,18 +199,52 @@ def detect(save_img = False):
 #--------------------------------------------------------------------------------------------------#
                     if save_img or view_img:                    # Add bbox to image
                         label = '%s %.2f' % (names[int(cls)], conf)
+
                         plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=3)
+
+                    ac.append(float('%.2f' % conf) * 100)
+                    na.append(names[int(cls)])
+#==================================================================================================#
+            # Sending message to bot:       #TODO: Acrescentar para onça também...
+                acc = float('%.2f' % conf) * 100 
+                frame = im0.copy()
+                # If class_name = person and accuracy >= 80 %
+                print('ac: ', ac)
+                print('na: ', na)
+                if (names[int(cls)] == class_name) and (int(acc) >= accuracy):
+                    
+                    if send_control:
+                        print('\n#------------------------------------------#')
+                        print("Classe:", names[int(cls)], "| Accuracy: %.2f" % conf, "%")
+                        print('#------------------------------------------#\n')
+                        
+                        cv2.imwrite('teste.png', frame)         # TODO: Encontrar um jeito de mandar o frame
+                        photo = open('teste.png', 'rb')
+                        
+                        send_control = False
+
+                        #bot_admin.send_alert(detection = names[int(cls)], accuracy = acc, img = photo)
+                        bot_admin.send_alert(detection = na, accuracy = ac, img = photo)
+                        
+                    else:
+                        pass
+#                    else:
+#                        send_control = False
+#                    print('Label: ', label)
+#                    print('String: ', s)
 #--------------------------------------------------------------------------------------------------#
             # Print time (inference + NMS)
             print('%sDone. (%.3fs)' % (s, t2 - t1))
-
+#--------------------------------------------------------------------------------------------------#
             # Stream results
             if view_img:
                 currTime = time.time()
                 fps = 1 / (currTime - prevTime)
                 prevTime = currTime
+                
                 cv2.putText(im0, f'FPS: {int(fps)}', (20, 70), cv2.FONT_HERSHEY_PLAIN, 3, (0, 196, 255), 2)
                 cv2.imshow(p, im0)
+                
                 if cv2.waitKey(30) == 27:                       # q to quit
                     raise StopIteration
 #--------------------------------------------------------------------------------------------------#
@@ -187,6 +264,7 @@ def detect(save_img = False):
                         w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
                         h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
                         vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*fourcc), fps, (w, h))
+                        
                     vid_writer.write(im0)
 #--------------------------------------------------------------------------------------------------#
     if save_txt or save_img:
@@ -219,12 +297,15 @@ if __name__ == '__main__':
     parser.add_argument('--names', type=str, default='data/coco.names', help='*.cfg path')
 
     opt = parser.parse_args()
+#==================================================================================================#
+    print('\n#==================================================================================================#')
     print(opt)
-
+    print('#==================================================================================================#\n')
+#==================================================================================================#
     with torch.no_grad():
         if opt.update:  # update all models (to fix SourceChangeWarning)
             for opt.weights in ['']:
-                detect()
+                detect(send_control)
                 strip_optimizer(opt.weights)
         else:
             detect()
