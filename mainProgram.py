@@ -25,6 +25,7 @@ import time
 from pathlib import Path
 
 import cv2
+from numpy.core.records import array
 import torch
 import torch.backends.cudnn as cudnn
 from numpy import random
@@ -39,6 +40,11 @@ from utils.torch_utils import select_device, load_classifier, time_synchronized
 from models.models import *
 from utils.datasets import *
 from utils.general import *
+
+#--------------------------------------------------------------------------------------------------#
+# Object tracker import
+
+from obj_tracking import CentroidTracker
 #--------------------------------------------------------------------------------------------------#
 # Bot import
 
@@ -57,16 +63,30 @@ load_dotenv()                                                           # Carreg
 token_admin = os.getenv('ADMIN_TOKEN')                                  # Token do admin       | Admin token
 admin_id = os.getenv('ADMIN_ID')                                        # Id do admin          | Admin ID
 
-bot_admin = AdminBot.AdminBot(token_admin, admin_id)                    # Instancia do bot do admin
+bot_admin = AdminBot.AdminBot(token_admin, admin_id, log=True)                    # Instancia do bot do admin
+
+t1 = Thread(target = bot_admin.alive)
+t1.start()
+
 #bot_admin.send_alert(detection='pessoa', accuracy='92%', img=None)
 #==================================================================================================#
 # Control Variables 
-#TODO: Acrescentar onça e Object tracking...
+#TODO: Acrescentar onça
 
-send_control: bool = True                                               # Substituir por Object tracking
-class_name: str = "person"                                              # Acrescentar onça depois
-accuracy: int = 80                                                      # Acurácia mínima    
+# Bot infos:
+class_name: str = "person"                                              # ["person", "jaguar"] | Class to be detected 
+accuracy: int = 70                                                      # Acurácia mínima -> Minimum accuracy   
 
+# Log init:
+log_active: bool = True                                                 # True -> Log on | False -> Log off.
+
+# Object tracking:
+rects = []                                                              # Save the object bounding boxes
+ct: object = CentroidTracker()                                          # Instacia do Object tracker
+
+# Send controller:
+last_ID: list = [0]                                                    # IDs of the objects in the last frame
+send_control: bool = True                                               # Controller to send just 1 fram per time
 #==================================================================================================#
 # Função para declaração das classes: 
 
@@ -80,6 +100,8 @@ def load_classes(path):
 # Função principal para detecção dos objetos desejados:
 
 def detect(save_img = False, send_control = True):
+    global last_ID
+    
     prevTime = 0
     out, source, weights, view_img, save_txt, imgsz, cfg, names = \
         opt.output, opt.source, opt.weights, opt.view_img, opt.save_txt, opt.img_size, opt.cfg, opt.names
@@ -162,23 +184,21 @@ def detect(save_img = False, send_control = True):
                 p, s, im0 = path[i], '%g: ' % i, im0s[i].copy()
             else:
                 p, s, im0 = path, '', im0s
-
-#--------------------------------------------------------------------------------------------------#
-        # Copia um instancia da imagem coletada: 
-        # Take one snap of the image collected:
-            frame = im0.copy()
 #--------------------------------------------------------------------------------------------------#    
 
             save_path = str(Path(out) / Path(p).name)
             txt_path = str(Path(out) / Path(p).stem) + ('_%g' % dataset.frame if dataset.mode == 'video' else '')
             s += '%gx%g ' % img.shape[2:]                       # print string
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]          # normalization gain whwh
-#--------------------------------------------------------------------------------------------------#
+
+#==================================================================================================#
+        # Main loop --> Taking frame by frame informations:
             if det is not None and len(det):
 #--------------------------------------------------------------------------------------------------#
             # Definição de variáveis auxiliares:         
                 ac_array = []
                 na_array = []
+                rects = []                                      # Clean the bouding boxes
 #--------------------------------------------------------------------------------------------------#        
                 # Rescale boxes from img_size to im0 size
                 det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
@@ -191,10 +211,14 @@ def detect(save_img = False, send_control = True):
                 # Write results
                 for *xyxy, conf, cls in det:
                 # Prints to debug:
-                    print('#-------------------------------------------------------------------------------#\n')
-#                    print('Conf: ', conf)
-                    print(det)                 
+                    # print('#-------------------------------------------------------------------------------#\n')
+                    # print('Conf: ', det)
+    
+                # Definição do Object tracking:
+                    rects.append([int(xyxy[0]), int(xyxy[1]), int(xyxy[2]), int(xyxy[3])])
+                    objects = ct.update(rects)             
 #--------------------------------------------------------------------------------------------------#
+                # Not using this --> #TODO: Remove thiss...
                     if save_txt:  # Write to file
                         xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
                         with open(txt_path + '.txt', 'a') as f:
@@ -203,36 +227,57 @@ def detect(save_img = False, send_control = True):
                     if save_img or view_img:                    # Add bbox to image
                         label = '%s %.2f' % (names[int(cls)], conf)
 
-                        plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=3)
+                        plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=2)
 
                     ac_array.append(float('%.2f' % conf) * 100)
                     na_array.append(names[int(cls)])
+#==================================================================================================#      
+            # OBJECT TRACKING:
+                # loop over the tracked objects
+              
+                for (objectID, centroid) in objects.items():
+                    
+                    # draw both the ID of the object and the centroid of the
+                    # object on the output frame
+                    text = "ID {}".format(objectID)
+                    cv2.putText(im0, text, (centroid[0] - 10, centroid[1] - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (190, 0, 0), 2)
+                    cv2.circle(im0, (centroid[0], centroid[1]), 4, (190, 0, 0), -1)
+      
 #==================================================================================================#
-            # Sending message to bot:       #TODO: Acrescentar para onça também...
+            # SENDING MESSAGE TO THE BOT:       #TODO: Acrescentar para onça também...
                 acc = float('%.2f' % conf) * 100 
+#--------------------------------------------------------------------------------------------------#
+            # Copia um instancia da imagem coletada: 
+            # Take one snap of the image collected:
                 frame = im0.copy()
-                
                 # If class_name = person and accuracy >= 80 %
                 if (names[int(cls)] == class_name) and (int(acc) >= accuracy):
+                    print(last_ID)
                     
-                    if send_control:
+                    if (objectID > max(last_ID)) and send_control:
                     # Prints to debug
                         print('\n#------------------------------------------#')
-                        print("Classes: ", na_array, "| Accuracy: ", ac_array, "%")
+                        print(" Classes: ", na_array, "| Accuracy: ", ac_array, "%")
                         print('#------------------------------------------#\n')
 #--------------------------------------------------------------------------------------------------#                    
-                    # Save image to computer
-                        cv2.imwrite('teste.png', frame)         # TODO: Encontrar um jeito de mandar o frame
+                    # Save image to computer:
+                    
+                        cv2.imwrite('teste.png', frame)     # TODO: Encontrar um jeito de mandar o frame
                         photo = open('teste.png', 'rb')
-#--------------------------------------------------------------------------------------------------#
-                        # TODO: Mudar para utilizar o object tracking                      
-                        send_control = False                    # Evita de ficar spamando o bot
-
+#--------------------------------------------------------------------------------------------------#                 
+                    # Sending message to bot:
+                        send_control = False
+                        
                         #bot_admin.send_alert(detection = names[int(cls)], accuracy = acc, img = photo)
                         bot_admin.send_alert(detection = na_array, accuracy = ac_array, img = photo)
+#--------------------------------------------------------------------------------------------------#
+                        last_ID.append(objectID)            # Spam messages controller --> Evita de ficar spamando o bot    
 #--------------------------------------------------------------------------------------------------#                     
                     else:
                         pass
+                else:
+                    send_control = True
 #--------------------------------------------------------------------------------------------------#
             # Print time (inference + NMS)
             print('%sDone. (%.3fs)' % (s, t2 - t1))
