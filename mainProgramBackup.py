@@ -21,7 +21,7 @@ import argparse
 import os
 import platform
 import shutil
-import time, schedule
+import time
 from pathlib import Path
 
 import cv2
@@ -55,7 +55,6 @@ import os
 import sys
 sys.path.append("..")
 from bot_jaguar import AdminBot                                         # bot importation
-from bot_jaguar import UserBot                                          # bot importation
 
 #==================================================================================================#
 # Instanciando classe Bot Admin
@@ -64,8 +63,10 @@ load_dotenv()                                                           # Carreg
 token_admin = os.getenv('ADMIN_TOKEN')                                  # Token do admin       | Admin token
 admin_id = os.getenv('ADMIN_ID')                                        # Id do admin          | Admin ID
 
-token_user = os.getenv('USER_TOKEN')                                    # Token do user        | Admin token
-user_id = os.getenv('USER_ID')                                          # Id do user           | Admin ID
+bot_admin = AdminBot.AdminBot(token_admin, admin_id, log=True)                    # Instancia do bot do admin
+
+t1 = Thread(target = bot_admin.alive)
+t1.start()
 
 #bot_admin.send_alert(detection='pessoa', accuracy='92%', img=None)
 #==================================================================================================#
@@ -94,55 +95,19 @@ def load_classes(path):
     with open(path, 'r') as f:
         names = f.read().split('\n')
     return list(filter(None, names))  # filter removes empty strings (such as last line)
-#==================================================================================================#
-# Function to control the actual time and schedule functions:
 
-def checkHour(arg):
-    global bot_admin, bot_user
-    
-    try:
 #--------------------------------------------------------------------------------------------------#
-        if arg == "alive":
-            
-            if opt.adminBot:
-                bot_admin.send_isAlive()
-#--------------------------------------------------------------------------------------------------#
-            if opt.userBot:
-                bot_user.send_isAlive()
-#--------------------------------------------------------------------------------------------------#
-        if arg == "change":
-            
-            if opt.adminBot:
-                bot_admin.update_log_date()
-#--------------------------------------------------------------------------------------------------#
-    except:
-        pass
-#--------------------------------------------------------------------------------------------------#
-# Schedule events:
-
-schedule.every().day.at("08:00").do(checkHour, arg = "alive")
-schedule.every().day.at("00:00").do(checkHour, arg = "change")
-#==================================================================================================#
 # Função principal para detecção dos objetos desejados:
 
 def detect(save_img = False, send_control = True):
-    global last_ID, bot_admin, bot_user
+    global last_ID
     
     prevTime = 0
     out, source, weights, view_img, save_txt, imgsz, cfg, names = \
         opt.output, opt.source, opt.weights, opt.view_img, opt.save_txt, opt.img_size, opt.cfg, opt.names
     webcam = source == '0' or source.startswith('rtsp') or source.startswith('http') or source.endswith('.txt')
-#==================================================================================================#
-    if opt.adminBot:
-        bot_admin = AdminBot.AdminBot(token_admin, admin_id, log=log_active)    # Instancia do bot do admin
 
-        t1 = Thread(target = bot_admin.alive)
-        t1.start()
-
-    if opt.userBot:
-        bot_user = UserBot.UserBot(token_user, user_id)    # Instancia do bot do admin
-    
-#==================================================================================================#
+#--------------------------------------------------------------------------------------------------#
     # Initialize
     device = select_device(opt.device)
     
@@ -282,7 +247,7 @@ def detect(save_img = False, send_control = True):
 #==================================================================================================#
             # SENDING MESSAGE TO THE BOT:       #TODO: Acrescentar para onça também...
                 acc = float('%.2f' % conf) * 100 
-#==================================================================================================#
+#--------------------------------------------------------------------------------------------------#
             # Copia um instancia da imagem coletada: 
             # Take one snap of the image collected:
                 frame = im0.copy()
@@ -313,9 +278,7 @@ def detect(save_img = False, send_control = True):
                         pass
                 else:
                     send_control = True
-#==================================================================================================#
-            schedule.run_pending()               # Check actual time -> Schedule function    
-
+#--------------------------------------------------------------------------------------------------#
             # Print time (inference + NMS)
             print('%sDone. (%.3fs)' % (s, t2 - t1))
 #--------------------------------------------------------------------------------------------------#
@@ -369,7 +332,7 @@ if __name__ == '__main__':
     parser.add_argument('--img-size', type=int, default=1280, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.4, help='object confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.5, help='IOU threshold for NMS')
-    parser.add_argument('--device', default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
+    parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--view-img', action='store_true', help='display results')
     parser.add_argument('--save-txt', action='store_true', help='save results to *.txt')
     parser.add_argument('--classes', nargs='+', type=int, help='filter by class: --class 0, or --class 0 2 3')
@@ -378,10 +341,6 @@ if __name__ == '__main__':
     parser.add_argument('--update', action='store_true', help='update all models')
     parser.add_argument('--cfg', type=str, default='cfg/yolor_p6.cfg', help='*.cfg path')
     parser.add_argument('--names', type=str, default='data/coco.names', help='*.cfg path')
-
-    parser.add_argument('--adminBot', type=bool, default='True', help='Admin Bot ON/OFF')
-    parser.add_argument('--userBot', type=bool, default='False', help='User Bot ON/OFF')
-    
 
     opt = parser.parse_args()
 #==================================================================================================#
