@@ -53,9 +53,13 @@ from threading import Thread
 import os
 
 import sys
-sys.path.append("..")
-from bot_jaguar import AdminBot                                         # bot importation
-from bot_jaguar import UserBot                                          # bot importation
+sys.path.append('bot_jaguar')
+
+import AdminBot
+import UserBot
+
+# from bot_jaguar import AdminBot                                         # bot importation
+# from bot_jaguar import UserBot                                          # bot importation
 
 #==================================================================================================#
 # Instanciando classe Bot Admin
@@ -298,8 +302,8 @@ def detect(save_img = False, send_control = True):
 #--------------------------------------------------------------------------------------------------#                    
                     # Save image to computer:
                     
-                        cv2.imwrite('teste.png', frame)     # TODO: Encontrar um jeito de mandar o frame
-                        photo = open('teste.png', 'rb')
+                        cv2.imwrite('capture.png', frame)     # TODO: Encontrar um jeito de mandar o frame
+                        photo = open('capture.png', 'rb')
 #--------------------------------------------------------------------------------------------------#                 
                     # Sending message to bot:
                         send_control = False
@@ -363,9 +367,9 @@ def detect(save_img = False, send_control = True):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', nargs='+', type=str, default='../weights/yolor_p6.pt', help='model.pt path(s)')
-    parser.add_argument('--source', type=str, default='inference/images', help='source')  # file/folder, 0 for webcam
-    parser.add_argument('--output', type=str, default='inference/output', help='output folder')  # output folder
+    parser.add_argument('--weights', nargs='+', type=str, default='weights/yolor_p6.pt', help='model.pt path(s)')
+    parser.add_argument('--source', type=str, default='YoloR/inference/images', help='source')  # file/folder, 0 for webcam
+    parser.add_argument('--output', type=str, default='YoloR/inference/output', help='output folder')  # output folder
     parser.add_argument('--img-size', type=int, default=1280, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.4, help='object confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.5, help='IOU threshold for NMS')
@@ -376,8 +380,8 @@ if __name__ == '__main__':
     parser.add_argument('--agnostic-nms', action='store_true', help='class-agnostic NMS')
     parser.add_argument('--augment', action='store_true', help='augmented inference')
     parser.add_argument('--update', action='store_true', help='update all models')
-    parser.add_argument('--cfg', type=str, default='cfg/yolor_p6.cfg', help='*.cfg path')
-    parser.add_argument('--names', type=str, default='data/coco.names', help='*.cfg path')
+    parser.add_argument('--cfg', type=str, default='YoloR/cfg/yolor_p6.cfg', help='*.cfg path')
+    parser.add_argument('--names', type=str, default='YoloR/data/coco.names', help='*.cfg path')
 
     parser.add_argument('--adminBot', type=bool, default='True', help='Admin Bot ON/OFF')
     parser.add_argument('--userBot', type=bool, default='False', help='User Bot ON/OFF')
