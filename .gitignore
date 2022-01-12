@@ -161,3 +161,9 @@ pip-selfcheck.json
 TODO
 relatorio.txt
 teste.png
+inference/images/video1.mp4
+inference/images/video2.mp4
+inference/images/video3.mp4
+inference/output
+desktop.ini
+

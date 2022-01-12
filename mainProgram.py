@@ -71,14 +71,15 @@ admin_id = os.getenv('ADMIN_ID')                                        # Id do 
 token_user = os.getenv('USER_TOKEN')                                    # Token do user        | Admin token
 user_id = os.getenv('USER_ID')                                          # Id do user           | Admin ID
 
-#bot_admin.send_alert(detection='pessoa', accuracy='92%', img=None)
 #==================================================================================================#
 # Control Variables 
-#TODO: Acrescentar onça
 
 # Bot infos:
-class_name: str = "person"                                              # ["person", "jaguar"] | Class to be detected 
+class_name: str = ["pessoa", "onca"]                                    # ["person", "jaguar"] | Class to be detected 
 accuracy: int = 70                                                      # Acurácia mínima -> Minimum accuracy   
+
+name_cam1 = "Camera Viveiro Arara"
+name_cam2 = "Camera Viveiro Flamingos"
 
 # Log init:
 log_active: bool = True                                                 # True -> Log on | False -> Log off.
@@ -258,10 +259,10 @@ def detect(save_img = False, send_control = True):
                     objects = ct.update(rects)             
 #--------------------------------------------------------------------------------------------------#
                 # Not using this --> #TODO: Remove thiss...
-                    if save_txt:  # Write to file
-                        xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
-                        with open(txt_path + '.txt', 'a') as f:
-                            f.write(('%g ' * 5 + '\n') % (cls, *xywh))  # label format
+                    # if save_txt:  # Write to file
+                    #     xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
+                    #     with open(txt_path + '.txt', 'a') as f:
+                    #         f.write(('%g ' * 5 + '\n') % (cls, *xywh))  # label format
 #--------------------------------------------------------------------------------------------------#
                     if save_img or view_img:                    # Add bbox to image
                         label = '%s %.2f' % (names[int(cls)], conf)
@@ -291,7 +292,7 @@ def detect(save_img = False, send_control = True):
             # Take one snap of the image collected:
                 frame = im0.copy()
                 # If class_name = person and accuracy >= 80 %
-                if (names[int(cls)] == class_name) and (int(acc) >= accuracy):
+                if (names[int(cls)] == class_name[0]) and (int(acc) >= accuracy):
                     print(last_ID)
                     
                     if (objectID > max(last_ID)) and send_control:
@@ -309,7 +310,31 @@ def detect(save_img = False, send_control = True):
                         send_control = False
                         
                         #bot_admin.send_alert(detection = names[int(cls)], accuracy = acc, img = photo)
-                        bot_admin.send_alert(detection = na_array, accuracy = ac_array, img = photo)
+                        bot_admin.send_alert(detection = na_array, accuracy = ac_array, img = photo, camera = name_cam1)
+#--------------------------------------------------------------------------------------------------#
+                        last_ID.append(objectID)            # Spam messages controller --> Evita de ficar spamando o bot    
+#--------------------------------------------------------------------------------------------------#                     
+                    else:
+                        pass
+                
+                if (names[int(cls)] == class_name[1]) and (int(acc) >= accuracy):
+
+                    if (objectID > max(last_ID)) and send_control:
+                    # Prints to debug
+                        print('\n#------------------------------------------#')
+                        print(" Classes: ", na_array, "| Accuracy: ", ac_array, "%")
+                        print('#------------------------------------------#\n')
+#--------------------------------------------------------------------------------------------------#                    
+                    # Save image to computer:
+                    
+                        cv2.imwrite('capture.png', frame)    
+                        photo = open('capture.png', 'rb')
+#--------------------------------------------------------------------------------------------------#                 
+                    # Sending message to bot:
+                        send_control = False
+                        
+                        #bot_admin.send_alert(detection = names[int(cls)], accuracy = acc, img = photo)
+                        bot_admin.send_alert(detection = na_array, accuracy = ac_array, img = photo, camera = name_cam2)
 #--------------------------------------------------------------------------------------------------#
                         last_ID.append(objectID)            # Spam messages controller --> Evita de ficar spamando o bot    
 #--------------------------------------------------------------------------------------------------#                     
@@ -380,8 +405,8 @@ if __name__ == '__main__':
     parser.add_argument('--agnostic-nms', action='store_true', help='class-agnostic NMS')
     parser.add_argument('--augment', action='store_true', help='augmented inference')
     parser.add_argument('--update', action='store_true', help='update all models')
-    parser.add_argument('--cfg', type=str, default='YoloR/cfg/yolor_p6.cfg', help='*.cfg path')
-    parser.add_argument('--names', type=str, default='YoloR/data/coco.names', help='*.cfg path')
+    parser.add_argument('--cfg', type=str, default='YoloR/cfg/yolor_p6_treinamento.cfg', help='*.cfg path')
+    parser.add_argument('--names', type=str, default='YoloR/data/pda.names', help='*.cfg path')
 
     parser.add_argument('--adminBot', type=bool, default='True', help='Admin Bot ON/OFF')
     parser.add_argument('--userBot', type=bool, default='False', help='User Bot ON/OFF')
