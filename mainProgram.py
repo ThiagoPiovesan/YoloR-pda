@@ -22,13 +22,16 @@ import os
 import platform
 import shutil
 import time, schedule
+#--------------------------------------------------------------------------------------------------#
+from time import sleep
 from pathlib import Path
-
+#--------------------------------------------------------------------------------------------------#
 import cv2
 from numpy.core.records import array
+from numpy import random
+#--------------------------------------------------------------------------------------------------#
 import torch
 import torch.backends.cudnn as cudnn
-from numpy import random
 #--------------------------------------------------------------------------------------------------#
 from utils.google_utils import attempt_load
 from utils.datasets import LoadStreams, LoadImages
@@ -36,11 +39,10 @@ from utils.general import (
     check_img_size, non_max_suppression, apply_classifier, scale_coords, xyxy2xywh, strip_optimizer)
 from utils.plots import plot_one_box
 from utils.torch_utils import select_device, load_classifier, time_synchronized
-
+#--------------------------------------------------------------------------------------------------#
 from models.models import *
 from utils.datasets import *
 from utils.general import *
-
 #--------------------------------------------------------------------------------------------------#
 # Object tracker import
 
@@ -51,7 +53,7 @@ from obj_tracking import CentroidTracker
 from dotenv import load_dotenv
 from threading import Thread
 import os
-
+#--------------------------------------------------------------------------------------------------#
 import sys
 sys.path.append('bot_jaguar')
 
@@ -78,18 +80,15 @@ user_id = os.getenv('USER_ID')                                          # Id do 
 class_name: str = ["pessoa", "onca"]                                    # ["person", "jaguar"] | Class to be detected 
 accuracy: int = 70                                                      # Acurácia mínima -> Minimum accuracy   
 
-name_cam1 = "Camera Viveiro Arara"
-name_cam2 = "Camera Viveiro Flamingos"
-
 # Log init:
 log_active: bool = True                                                 # True -> Log on | False -> Log off.
 
 # Object tracking:
 rects = []                                                              # Save the object bounding boxes
-ct: object = CentroidTracker()                                          # Instacia do Object tracker
+ct: object = CentroidTracker(maxDisappeared=20)                         # Instacia do Object tracker
 
 # Send controller:
-last_ID: list = [0]                                                    # IDs of the objects in the last frame
+last_ID: list = [-1]                                                    # IDs of the objects in the last frame
 send_control: bool = True                                               # Controller to send just 1 fram per time
 #==================================================================================================#
 # Função para declaração das classes: 
@@ -134,9 +133,10 @@ def detect(save_img = False, send_control = True):
     global last_ID, bot_admin, bot_user
     
     prevTime = 0
-    out, source, weights, view_img, save_txt, imgsz, cfg, names = \
-        opt.output, opt.source, opt.weights, opt.view_img, opt.save_txt, opt.img_size, opt.cfg, opt.names
-    webcam = source == '0' or source.startswith('rtsp') or source.startswith('http') or source.endswith('.txt')
+    out, source, weights, view_img, save_txt, imgsz, cfg, names, name_cam = \
+        opt.output, opt.source, opt.weights, opt.view_img, opt.save_txt, opt.img_size, opt.cfg, opt.names, opt.name_camera
+        
+    webcam = source == '0' or source.startswith('rtsp') or source.startswith('http') or source.endswith('.txt') #or '1' or '2' or '3' or '4'
 #==================================================================================================#
     if opt.adminBot:
         bot_admin = AdminBot.AdminBot(token_admin, admin_id, log=log_active)    # Instancia do bot do admin
@@ -147,6 +147,8 @@ def detect(save_img = False, send_control = True):
     if opt.userBot:
         bot_user = UserBot.UserBot(token_user, user_id)    # Instancia do bot do admin
     
+        # t2 = Thread(target = bot_user.alive)
+        # t2.start()
 #==================================================================================================#
     # Initialize
     device = select_device(opt.device)
@@ -184,7 +186,7 @@ def detect(save_img = False, send_control = True):
         view_img = True
         cudnn.benchmark = True                                  # set True to speed up constant image size inference
         dataset = LoadStreams(source, img_size=imgsz)           
-
+        #resize = cv2.resize(image, (176, 144)) 
     else:
         save_img = True
         dataset = LoadImages(source, img_size=imgsz, auto_size=64)  # Dataset load
@@ -258,7 +260,7 @@ def detect(save_img = False, send_control = True):
                     rects.append([int(xyxy[0]), int(xyxy[1]), int(xyxy[2]), int(xyxy[3])])
                     objects = ct.update(rects)             
 #--------------------------------------------------------------------------------------------------#
-                # Not using this --> #TODO: Remove thiss...
+                # Not using this --> #TODO: Remove this ?...
                     # if save_txt:  # Write to file
                     #     xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
                     #     with open(txt_path + '.txt', 'a') as f:
@@ -285,20 +287,20 @@ def detect(save_img = False, send_control = True):
                     cv2.circle(im0, (centroid[0], centroid[1]), 4, (190, 0, 0), -1)
       
 #==================================================================================================#
-            # SENDING MESSAGE TO THE BOT:       #TODO: Acrescentar para onça também...
+            # SENDING MESSAGE TO THE BOT:     
                 acc = float('%.2f' % conf) * 100 
 #==================================================================================================#
             # Copia um instancia da imagem coletada: 
             # Take one snap of the image collected:
                 frame = im0.copy()
                 # If class_name = person and accuracy >= 80 %
-                if (names[int(cls)] == class_name[0]) and (int(acc) >= accuracy):
+                if ((names[int(cls)] == class_name[0]) or (names[int(cls)] == class_name[1])) and (int(acc) >= accuracy):
                     print(last_ID)
                     
-                    if (objectID > max(last_ID)) and send_control:
+                    if (objectID > max(last_ID)):
                     # Prints to debug
                         print('\n#------------------------------------------#')
-                        print(" Classes: ", na_array, "| Accuracy: ", ac_array, "%")
+                        print("+ Classes: ", na_array, "| Accuracy: ", ac_array, "%")
                         print('#------------------------------------------#\n')
 #--------------------------------------------------------------------------------------------------#                    
                     # Save image to computer:
@@ -307,41 +309,20 @@ def detect(save_img = False, send_control = True):
                         photo = open('capture.png', 'rb')
 #--------------------------------------------------------------------------------------------------#                 
                     # Sending message to bot:
-                        send_control = False
-                        
-                        #bot_admin.send_alert(detection = names[int(cls)], accuracy = acc, img = photo)
-                        bot_admin.send_alert(detection = na_array, accuracy = ac_array, img = photo, camera = name_cam1)
-#--------------------------------------------------------------------------------------------------#
-                        last_ID.append(objectID)            # Spam messages controller --> Evita de ficar spamando o bot    
-#--------------------------------------------------------------------------------------------------#                     
-                    else:
-                        pass
-                
-                if (names[int(cls)] == class_name[1]) and (int(acc) >= accuracy):
 
-                    if (objectID > max(last_ID)) and send_control:
-                    # Prints to debug
-                        print('\n#------------------------------------------#')
-                        print(" Classes: ", na_array, "| Accuracy: ", ac_array, "%")
-                        print('#------------------------------------------#\n')
-#--------------------------------------------------------------------------------------------------#                    
-                    # Save image to computer:
-                    
-                        cv2.imwrite('capture.png', frame)    
-                        photo = open('capture.png', 'rb')
-#--------------------------------------------------------------------------------------------------#                 
-                    # Sending message to bot:
-                        send_control = False
-                        
                         #bot_admin.send_alert(detection = names[int(cls)], accuracy = acc, img = photo)
-                        bot_admin.send_alert(detection = na_array, accuracy = ac_array, img = photo, camera = name_cam2)
+                        bot_admin.send_alert(detection = na_array, accuracy = ac_array, img = photo, camera = name_cam)
+
+                        if opt.userBot:
+                            sleep(0.05)
+                            photo = open('capture.png', 'rb')
+                            
+                            bot_user.send_alert(detection = na_array, accuracy = ac_array, img = photo, camera = name_cam)
 #--------------------------------------------------------------------------------------------------#
                         last_ID.append(objectID)            # Spam messages controller --> Evita de ficar spamando o bot    
 #--------------------------------------------------------------------------------------------------#                     
                     else:
                         pass
-                else:
-                    send_control = True
 #==================================================================================================#
             schedule.run_pending()               # Check actual time -> Schedule function    
 
@@ -395,7 +376,7 @@ if __name__ == '__main__':
     parser.add_argument('--weights', nargs='+', type=str, default='weights/yolor_p6.pt', help='model.pt path(s)')
     parser.add_argument('--source', type=str, default='YoloR/inference/images', help='source')  # file/folder, 0 for webcam
     parser.add_argument('--output', type=str, default='YoloR/inference/output', help='output folder')  # output folder
-    parser.add_argument('--img-size', type=int, default=1280, help='inference size (pixels)')
+    parser.add_argument('--img-size', type=int, default=640, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.4, help='object confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.5, help='IOU threshold for NMS')
     parser.add_argument('--device', default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
@@ -408,6 +389,7 @@ if __name__ == '__main__':
     parser.add_argument('--cfg', type=str, default='YoloR/cfg/yolor_p6_treinamento.cfg', help='*.cfg path')
     parser.add_argument('--names', type=str, default='YoloR/data/pda.names', help='*.cfg path')
 
+    parser.add_argument('--name_camera', type=str, default='Camera 1', help='Place where the camera is')
     parser.add_argument('--adminBot', type=bool, default='True', help='Admin Bot ON/OFF')
     parser.add_argument('--userBot', type=bool, default='False', help='User Bot ON/OFF')
     
